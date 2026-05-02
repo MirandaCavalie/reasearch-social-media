@@ -60,8 +60,8 @@ def _build_search_query(categories: list[str]) -> str:
     """
     # Cada categoria se envuelve con el prefijo "cat:"
     cat_terms: list[str] = [f"cat:{cat}" for cat in categories]
-    # Unir con "+OR+" como separador (formato de la API de ArXiv)
-    return "+OR+".join(cat_terms)
+    # Unir con " OR " — requests se encarga de URL-encode correctamente
+    return " OR ".join(cat_terms)
 
 
 def _parse_published_date(date_str: str) -> datetime:

@@ -10,16 +10,16 @@ rss_feeds:
     url: "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
   - name: "MIT Technology Review"
     url: "https://www.technologyreview.com/feed/"
-  - name: "Anthropic Blog"
-    url: "https://www.anthropic.com/feed.xml"
+  - name: "Google AI Blog"
+    url: "https://blog.google/technology/ai/rss/"
   - name: "OpenAI Blog"
     url: "https://openai.com/blog/rss.xml"
   - name: "Ars Technica"
     url: "https://feeds.arstechnica.com/arstechnica/technology-lab"
-  - name: "TLDR AI Newsletter"
-    url: "https://tldr.tech/ai/rss"
-  - name: "The Batch (Andrew Ng)"
-    url: "https://www.deeplearning.ai/the-batch/feed/"
+  - name: "HuggingFace Blog"
+    url: "https://huggingface.co/blog/feed.xml"
+  - name: "Import AI Newsletter"
+    url: "https://importai.substack.com/feed"
 
 # --- Reddit subreddits (se agrega .rss automaticamente) ---
 reddit_subreddits:
@@ -67,9 +67,9 @@ apify:
 # --- Influencers ---
 influencers:
   rss_feeds:
-    - name: "Matt Wolfe (Future Tools)"
-      url: "https://www.futuretools.io/feed"
-      platform: "blog"
+    - name: "Matt Wolfe (YouTube)"
+      url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCJIfeSCssxSC_Dhc5s7woww"
+      platform: "youtube"
     - name: "Fireship"
       url: "https://www.youtube.com/feeds/videos.xml?channel_id=UCsBjURrPoezykLs9EqgamOA"
       platform: "youtube"

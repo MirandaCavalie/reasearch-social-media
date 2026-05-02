@@ -7,7 +7,7 @@ No requiere API key ni autenticacion — solo agrega .rss a la URL del subreddit
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from time import mktime
 
 import feedparser
@@ -161,6 +161,12 @@ def fetch_reddit_articles(subreddit_urls: list[str]) -> list[Article]:
 
                 # Extraer fecha y resumen
                 published_at: datetime = _parse_reddit_date(entry)
+
+                # Filtrar posts con mas de 48 horas de antiguedad
+                now = datetime.now(tz=timezone.utc)
+                if (now - published_at) > timedelta(hours=48):
+                    continue
+
                 summary: str = _extract_reddit_summary(entry)
 
                 # Construir la fuente con el nombre del subreddit

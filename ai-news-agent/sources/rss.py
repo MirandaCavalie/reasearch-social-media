@@ -6,7 +6,7 @@ con feedparser para extraer titulo, link, fecha y resumen.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from time import mktime
 
 import feedparser
@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 
 # Timeout global para peticiones HTTP en segundos
 HTTP_TIMEOUT: int = 30
+
+# Ventana maxima de antiguedad para articulos (en horas)
+MAX_AGE_HOURS: int = 48
 
 
 def _parse_published_date(entry: feedparser.FeedParserDict) -> datetime:
@@ -142,6 +145,12 @@ def fetch_rss_articles(feeds: list[dict]) -> list[Article]:
 
                 # Extraer fecha y resumen
                 published_at: datetime = _parse_published_date(entry)
+
+                # Filtrar articulos con mas de 48 horas de antiguedad
+                now = datetime.now(tz=timezone.utc)
+                if (now - published_at) > timedelta(hours=MAX_AGE_HOURS):
+                    continue
+
                 summary: str = _extract_summary(entry)
 
                 article = Article(

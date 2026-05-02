@@ -9,7 +9,7 @@ temas y formatos que se pueden adaptar para audiencia latina en TikTok.
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from time import mktime
 
 import feedparser
@@ -94,6 +94,11 @@ def _fetch_rss_signals(rss_feeds: list[dict]) -> list[ContentSignal]:
 
                 link = getattr(entry, "link", "") or ""
                 published_at = _parse_date(entry)
+
+                # Filtrar entries con mas de 48 horas de antiguedad
+                now = datetime.now(tz=timezone.utc)
+                if (now - published_at) > timedelta(hours=48):
+                    continue
 
                 # Extraer resumen para el hook
                 summary = getattr(entry, "summary", "") or ""
