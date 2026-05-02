@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \":*)",
+      "Bash(python test_sources.py test_dedup)",
+      "Bash(python test_sources.py test_virality)",
+      "Bash(python test_sources.py test_ranking)",
+      "Bash(pip install:*)",
+      "Bash(python -m pip install feedparser requests pyyaml python-dotenv schedule anthropic)",
+      "Bash(python:*)"
+    ]
+  }
+}
