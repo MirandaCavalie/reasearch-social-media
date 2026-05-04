@@ -14,6 +14,7 @@ Uso:
 
 import argparse
 import logging
+import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -44,6 +45,9 @@ from llm.analyzer import analyze_news
 from delivery.email_sender import send_email_briefing
 from delivery.slack_sender import send_slack_briefing
 
+from obsidian.reader import ObsidianReader
+from obsidian.writer import ObsidianWriter
+
 
 def setup_logging() -> None:
     """Configura el logging con formato estandar del proyecto."""
@@ -60,6 +64,91 @@ def load_config() -> dict:
     config_path = Path(__file__).parent / "config.yaml"
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def load_obsidian_reader() -> ObsidianReader | None:
+    """Intenta crear un ObsidianReader desde OBSIDIAN_VAULT_PATH.
+
+    Returns:
+        ObsidianReader si el vault existe, None si no esta configurado o no existe.
+    """
+    logger = logging.getLogger("main")
+    vault_path = os.getenv("OBSIDIAN_VAULT_PATH")
+    if not vault_path:
+        logger.info("OBSIDIAN_VAULT_PATH no configurado, usando solo config.yaml")
+        return None
+    try:
+        reader = ObsidianReader(vault_path)
+        logger.info(f"Obsidian vault conectado: {vault_path}")
+        return reader
+    except FileNotFoundError:
+        logger.warning(f"Obsidian vault no encontrado en: {vault_path}. Usando config.yaml como fallback")
+        return None
+
+
+def load_obsidian_writer() -> ObsidianWriter | None:
+    """Intenta crear un ObsidianWriter desde OBSIDIAN_VAULT_PATH.
+
+    Returns:
+        ObsidianWriter si el vault existe, None si no esta configurado.
+    """
+    vault_path = os.getenv("OBSIDIAN_VAULT_PATH")
+    if not vault_path or not Path(vault_path).exists():
+        return None
+    return ObsidianWriter(vault_path)
+
+
+def merge_obsidian_config(config: dict, reader: ObsidianReader) -> dict:
+    """Sobreescribe la configuracion de config.yaml con datos del vault de Obsidian.
+
+    Solo sobreescribe las secciones que existen en el vault.
+    Si un archivo del vault esta vacio o no existe, se mantiene config.yaml.
+
+    Args:
+        config: Configuracion base desde config.yaml
+        reader: ObsidianReader inicializado
+
+    Returns:
+        Config actualizado con datos de Obsidian
+    """
+    logger = logging.getLogger("main")
+
+    # RSS feeds desde Obsidian
+    obsidian_feeds = reader.read_rss_feeds()
+    if obsidian_feeds:
+        config["rss_feeds"] = obsidian_feeds
+        logger.info(f"RSS feeds cargados desde Obsidian: {len(obsidian_feeds)}")
+
+    # Influencers desde Obsidian
+    obsidian_influencers = reader.read_influencers()
+    if obsidian_influencers:
+        if obsidian_influencers.get("rss_feeds"):
+            config.setdefault("influencers", {})["rss_feeds"] = obsidian_influencers["rss_feeds"]
+        if obsidian_influencers.get("twitter_handles"):
+            config.setdefault("influencers", {})["twitter_handles"] = obsidian_influencers["twitter_handles"]
+        logger.info("Influencers cargados desde Obsidian")
+
+    # Keywords desde Obsidian
+    obsidian_keywords = reader.read_keywords()
+    if obsidian_keywords:
+        # Mapear keywords a las secciones correspondientes de config
+        if "hackernews" in obsidian_keywords or "hn_keywords" in obsidian_keywords:
+            hn_keywords = obsidian_keywords.get("hackernews") or obsidian_keywords.get("hn_keywords", [])
+            if hn_keywords:
+                config.setdefault("hackernews", {})["keywords"] = hn_keywords
+        if "high_value" in obsidian_keywords or "high_value_keywords" in obsidian_keywords:
+            hv_keywords = obsidian_keywords.get("high_value") or obsidian_keywords.get("high_value_keywords", [])
+            if hv_keywords:
+                config.setdefault("ranking", {})["high_value_keywords"] = hv_keywords
+        logger.info("Keywords cargados desde Obsidian")
+
+    # Learnings desde Obsidian (se pasan al analyzer via config)
+    learnings = reader.read_learnings()
+    if learnings:
+        config["_obsidian_learnings"] = learnings
+        logger.info("Learnings cargados desde Obsidian")
+
+    return config
 
 
 def collect_sources(config: dict, source_filter: str | None = None) -> tuple[list[Article], list[ContentSignal]]:
@@ -124,7 +213,12 @@ def collect_sources(config: dict, source_filter: str | None = None) -> tuple[lis
     return all_articles, all_signals
 
 
-def run_pipeline(config: dict, dry_run: bool = False, source_filter: str | None = None) -> None:
+def run_pipeline(
+    config: dict,
+    dry_run: bool = False,
+    source_filter: str | None = None,
+    obsidian_writer: ObsidianWriter | None = None,
+) -> None:
     """Ejecuta el pipeline completo del agente.
 
     Pasos:
@@ -133,12 +227,13 @@ def run_pipeline(config: dict, dry_run: bool = False, source_filter: str | None 
     3. Calcular virality scores
     4. Rankear
     5. Analizar con Claude API
-    6. Enviar briefing por email y Slack
+    6. Enviar briefing por email, Slack y Obsidian
 
     Args:
         config: Configuracion completa.
-        dry_run: Si True, no envia email/Slack.
+        dry_run: Si True, no envia email/Slack/Obsidian.
         source_filter: Si se especifica, solo ejecuta esa fuente.
+        obsidian_writer: Writer para guardar el brief en Obsidian (opcional).
     """
     logger = logging.getLogger("main")
     start_time = time.time()
@@ -182,7 +277,8 @@ def run_pipeline(config: dict, dry_run: bool = False, source_filter: str | None 
     # --- Paso 5: Analizar con Claude API ---
     logger.info("[PASO 5/6] Analizando con Claude API...")
     llm_config = config.get("llm", {})
-    briefing = analyze_news(top_articles, signals, llm_config)
+    learnings = config.get("_obsidian_learnings", "")
+    briefing = analyze_news(top_articles, signals, llm_config, learnings=learnings)
     logger.info(
         f"Briefing generado: {len(briefing.top_news)} noticias, "
         f"{len(briefing.scripts)} scripts"
@@ -198,6 +294,11 @@ def run_pipeline(config: dict, dry_run: bool = False, source_filter: str | None 
         slack_sent = send_slack_briefing(briefing)
         logger.info(f"Email: {'enviado' if email_sent else 'no enviado'}")
         logger.info(f"Slack: {'enviado' if slack_sent else 'no enviado'}")
+
+        # Escribir a Obsidian si esta configurado
+        if obsidian_writer:
+            obsidian_ok = obsidian_writer.write_brief(briefing)
+            logger.info(f"Obsidian: {'escrito' if obsidian_ok else 'error al escribir'}")
 
     # --- Resumen final ---
     elapsed = time.time() - start_time
@@ -284,10 +385,16 @@ def main() -> None:
         logger.error(f"Error cargando configuracion: {e}")
         sys.exit(1)
 
+    # Integrar Obsidian (leer fuentes del vault si esta disponible)
+    obsidian_reader = load_obsidian_reader()
+    if obsidian_reader:
+        config = merge_obsidian_config(config, obsidian_reader)
+
+    obsidian_writer = load_obsidian_writer()
+
     if args.schedule:
         # Modo scheduler: ejecutar cada dia a las 7:00 AM
         import schedule as sched
-        import os
 
         run_hour = int(os.getenv("RUN_HOUR", "7"))
         run_minute = int(os.getenv("RUN_MINUTE", "0"))
@@ -296,7 +403,8 @@ def main() -> None:
         logger.info(f"Scheduler activado. Ejecutando diariamente a las {schedule_time}")
 
         sched.every().day.at(schedule_time).do(
-            run_pipeline, config=config, dry_run=args.dry_run, source_filter=args.source
+            run_pipeline, config=config, dry_run=args.dry_run,
+            source_filter=args.source, obsidian_writer=obsidian_writer
         )
 
         while True:
@@ -304,7 +412,8 @@ def main() -> None:
             time.sleep(60)
     else:
         # Ejecucion unica
-        run_pipeline(config, dry_run=args.dry_run, source_filter=args.source)
+        run_pipeline(config, dry_run=args.dry_run, source_filter=args.source,
+                     obsidian_writer=obsidian_writer)
 
 
 if __name__ == "__main__":

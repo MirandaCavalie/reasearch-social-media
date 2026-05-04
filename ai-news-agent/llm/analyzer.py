@@ -190,6 +190,7 @@ def analyze_news(
     articles: list[Article],
     signals: list[ContentSignal],
     config: dict,
+    learnings: str = "",
 ) -> Briefing:
     """
     Analiza las noticias y content signals usando Claude API.
@@ -204,6 +205,7 @@ def analyze_news(
         articles: Lista de articulos ya rankeados (top 10)
         signals: Lista de content signals de influencers
         config: Diccionario con 'model' y 'max_tokens' del LLM
+        learnings: Texto de learnings de Obsidian para ajustar el system prompt
 
     Returns:
         Briefing completo con noticias, scripts y analisis
@@ -226,6 +228,15 @@ def analyze_news(
     system_prompt = _load_system_prompt()
     if not system_prompt:
         logger.error("System prompt vacio, el analisis podria no ser optimo")
+
+    # Agregar learnings de Obsidian al system prompt si existen
+    if learnings:
+        system_prompt += (
+            "\n\n=== LEARNINGS DEL CREADOR ===\n"
+            "Usa estos aprendizajes previos para ajustar tus recomendaciones:\n\n"
+            f"{learnings}"
+        )
+        logger.info(f"Learnings agregados al system prompt ({len(learnings)} caracteres)")
 
     # Construir el mensaje de usuario con datos estructurados
     user_message = _build_user_message(articles, signals)
